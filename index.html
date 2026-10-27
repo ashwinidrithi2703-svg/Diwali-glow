@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05030d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Diwali Glow">
+<title>Diwali Glow — Wall Projection</title>
+<style>
+:root{color-scheme:dark;--gold:#ffd36a;--panel:rgba(15,10,32,.82)}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#05030d;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 55%,#160b2e 0,#080512 45%,#020106 100%);overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#ui{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:max(18px,env(safe-area-inset-top)) 16px max(18px,env(safe-area-inset-bottom));pointer-events:none;transition:opacity .4s}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.brand{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#ffe4a1;text-shadow:0 0 18px #ff9d3d}
+.subtitle{font-size:11px;color:#bdb3d6;margin-top:6px;letter-spacing:.05em}
+.pill{border:1px solid #ffffff30;background:#120d22b8;color:#fff;border-radius:999px;padding:10px 13px;font-size:12px;pointer-events:auto;backdrop-filter:blur(12px)}
+.bottom{display:flex;flex-direction:column;gap:14px;align-items:center}
+.scene-title{text-align:center;font-size:clamp(24px,5vw,42px);font-weight:650;letter-spacing:.02em;text-shadow:0 0 24px #d14dff80,0 2px 6px #000}
+.scene-desc{text-align:center;font-size:12px;color:#cfc4e6;margin-top:5px}
+.choices{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:720px;pointer-events:auto}
+.choice{border:1px solid #ffffff26;background:#100b20c9;color:#e7defa;padding:10px 13px;border-radius:999px;font-size:12px;backdrop-filter:blur(10px)}
+.choice.active{border-color:#ffd36a;color:#ffe4a1;box-shadow:0 0 18px #ffb34730}
+.actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;pointer-events:auto}
+.action{border:1px solid #ffffff38;background:#ffffff12;color:#fff;padding:11px 16px;border-radius:999px;font-size:12px}
+.action.primary{background:linear-gradient(120deg,#ffb63d,#ff5d9e);color:#220b22;border:0;font-weight:700}
+#hint{font-size:10px;color:#a79abf;text-align:center;max-width:340px;line-height:1.4}
+.hidden{opacity:0!important;pointer-events:none!important}
+#exitFull{display:none}
+@media (orientation:portrait){.subtitle{max-width:180px}.bottom{gap:11px}.choice{padding:9px 11px}}
+</style>
+</head>
+<body>
+<div id="stage">
+<canvas id="art"></canvas>
+<div id="ui">
+  <div class="top">
+    <div><div class="brand">✦ Diwali Glow</div><div class="subtitle">MAGICAL WALL PROJECTION</div></div>
+    <button id="hide" class="pill" aria-label="Hide controls">Hide controls</button>
+  </div>
+  <div class="bottom" id="controls">
+    <div><div class="scene-title" id="sceneTitle">A Thousand Diyas</div><div class="scene-desc" id="sceneDesc">Warm little flames, floating light and golden magic</div></div>
+    <div class="choices" id="choices">
+      <button class="choice active" data-scene="diyas">🪔 Diyas</button>
+      <button class="choice" data-scene="rangoli">🌈 Rangoli</button>
+      <button class="choice" data-scene="fireworks">🎆 Fireworks</button>
+      <button class="choice" data-scene="lanterns">🏮 Lanterns</button>
+      <button class="choice" data-scene="lotus">🪷 Lotus glow</button>
+      <button class="choice" data-scene="all">✨ Dream mix</button>
+    </div>
+    <div class="actions">
+      <button id="prev" class="action">← Previous</button>
+      <button id="play" class="action">Ⅱ Pause</button>
+      <button id="next" class="action">Next →</button>
+      <button id="full" class="action primary">⛶ Projection mode</button>
+      <button id="exitFull" class="action">Exit projection</button>
+    </div>
+    <div id="hint">Tip: connect your iPhone to the projector, turn up brightness, and use landscape orientation.</div>
+  </div>
+</div>
+</div>
+<script>
+(() => {
+ const canvas=document.getElementById('art'), ctx=canvas.getContext('2d');
+ const ui=document.getElementById('ui'), choices=[...document.querySelectorAll('.choice')];
+ const title=document.getElementById('sceneTitle'), desc=document.getElementById('sceneDesc');
+ const scenes=[
+  {id:'diyas',title:'A Thousand Diyas',desc:'Warm little flames, floating light and golden magic'},
+  {id:'rangoli',title:'Rainbow Rangoli',desc:'A living mandala blooms in jewel-bright colours'},
+  {id:'fireworks',title:'Festival of Lights',desc:'Colourful bursts sparkle across the night sky'},
+  {id:'lanterns',title:'Floating Lanterns',desc:'Glowing lanterns drift gently through the darkness'},
+  {id:'lotus',title:'Lotus Glow',desc:'Radiant lotus petals open in a dreamy rainbow shimmer'},
+  {id:'all',title:'Diwali Dream Mix',desc:'A little of every kind of magic, in one living scene'}
+ ];
+ let scene='diyas', paused=false, last=0, elapsed=0, W=0,H=0,DPR=1, particles=[], bursts=[], hideTimer=null;
+ const rand=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)];
+ const palette=['#ff477e','#ffb52e','#ffe875','#55f2d0','#50a8ff','#bb72ff','#ff65ce'];
+ function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.floor(W*DPR);canvas.height=Math.floor(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);seed();}
+ function seed(){particles=[];for(let i=0;i<Math.min(130,Math.floor(W*H/8500));i++)particles.push({x:rand(0,W),y:rand(0,H),r:rand(.6,2.4),a:rand(.2,.8),s:rand(.3,1.4),p:rand(0,7)});}
+ function glow(x,y,r,color,alpha=1){ctx.save();ctx.globalAlpha=alpha;ctx.shadowBlur=r*2;ctx.shadowColor=color;ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.restore();}
+ function line(x1,y1,x2,y2,color,width=2,alpha=1){ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.restore();}
+ function background(t){let g=ctx.createRadialGradient(W*.5,H*.55,0,W*.5,H*.55,Math.max(W,H)*.75);g.addColorStop(0,'#180b32');g.addColorStop(.5,'#080515');g.addColorStop(1,'#010106');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  particles.forEach(p=>{let a=p.a*(.55+.45*Math.sin(t*p.s+p.p));glow(p.x+Math.sin(t*.2+p.p)*8,p.y+Math.cos(t*.25+p.p)*7,p.r,'#d8c7ff',a);});
+ }
+ function diya(x,y,s,t){ctx.save();ctx.translate(x,y+Math.sin(t*1.8+x)*3);ctx.scale(s,s);
+  // bowl
+  let g=ctx.createLinearGradient(-30,0,30,0);g.addColorStop(0,'#a83a16');g.addColorStop(.5,'#ffcf63');g.addColorStop(1,'#b13a20');ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-30,0);ctx.quadraticCurveTo(0,19,30,0);ctx.quadraticCurveTo(0,9,-30,0);ctx.fill();
+  ctx.strokeStyle='#ffe5a0';ctx.lineWidth=1.5;ctx.stroke();
+  // flame
+  ctx.shadowBlur=24;ctx.shadowColor='#ff8a22';let flame=ctx.createRadialGradient(0,-16,1,0,-13,18);flame.addColorStop(0,'#fffbd0');flame.addColorStop(.3,'#ffe46b');flame.addColorStop(1,'#ff572e00');ctx.fillStyle=flame;ctx.beginPath();ctx.moveTo(0,-3);ctx.bezierCurveTo(-17,-16,-3,-31,1,-37);ctx.bezierCurveTo(13,-23,15,-13,0,-3);ctx.fill();ctx.restore();}
+ function drawDiyas(t){for(let i=0;i<9;i++){let x=W*(.12+i*.095),y=H*(.3+.17*Math.sin(i*1.7+t*.55));diya(x,y,Math.min(W,H)/750,t);}
+  for(let i=0;i<30;i++){let x=(i*97+t*8)%W,y=H*.2+(i*47%Math.max(1,H*.6));glow(x,y,1.6,palette[i%palette.length],.35+.35*Math.sin(t*2+i));}
+  diya(W*.5,H*.69,Math.min(W,H)/390,t);
+ }
+ function drawRangoli(t){let cx=W/2,cy=H/2,scale=Math.min(W,H)*.27;
+  for(let ring=0;ring<7;ring++){let n=12+ring*4,rad=scale*(.2+ring*.135),rot=t*(ring%2?.09:-.07)+ring*.14;
+   for(let i=0;i<n;i++){let a=i*Math.PI*2/n+rot,x=cx+Math.cos(a)*rad,y=cy+Math.sin(a)*rad,sz=scale*(.025+ring*.003);
+    ctx.save();ctx.translate(x,y);ctx.rotate(a+t*.05);ctx.globalAlpha=.8+.2*Math.sin(t*2+i);ctx.shadowBlur=16;ctx.shadowColor=palette[(i+ring)%palette.length];ctx.fillStyle=palette[(i+ring)%palette.length];ctx.beginPath();ctx.ellipse(0,0,sz*.55,sz*1.8,0,0,Math.PI*2);ctx.fill();ctx.restore();glow(x,y,2,'#fff1ba',.8);
+   }
+  }
+  for(let i=0;i<32;i++){let a=i*Math.PI/16+t*.1;glow(cx+Math.cos(a)*scale*1.15,cy+Math.sin(a)*scale*1.15,3,palette[i%palette.length],.8);}
+  glow(cx,cy,scale*.08,'#fff0a3',.9);
+ }
+ function spawnBurst(){let x=rand(W*.12,W*.88),y=rand(H*.12,H*.6),c=pick(palette),n=rand(35,75);for(let i=0;i<n;i++){let a=rand(0,Math.PI*2),v=rand(.5,3.4);bursts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:rand(35,75),max:75,c,r:rand(1,2.6)});}}
+ function drawFireworks(t,dt){if(Math.random()<.045)spawnBurst();bursts.forEach(p=>{p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.vy+=.012*dt*60;p.life-=dt*60;glow(p.x,p.y,p.r,p.c,Math.max(0,p.life/p.max));});bursts=bursts.filter(p=>p.life>0);}
+ function drawLanterns(t){for(let i=0;i<8;i++){let x=W*(.1+i*.115)+Math.sin(t*.45+i)*W*.025,y=((H*.15+i*H*.13-t*12)%(H*1.2)+H*1.2)%(H*1.2)-H*.1,s=Math.min(W,H)/450;
+   ctx.save();ctx.translate(x,y);ctx.scale(s,s);ctx.shadowBlur=28;ctx.shadowColor=palette[i%palette.length];
+   let g=ctx.createLinearGradient(-20,-35,20,35);g.addColorStop(0,palette[(i+1)%palette.length]);g.addColorStop(.5,'#fff0a4');g.addColorStop(1,palette[i%palette.length]);ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-23,-24);ctx.quadraticCurveTo(0,-36,23,-24);ctx.lineTo(17,23);ctx.quadraticCurveTo(0,34,-17,23);ctx.closePath();ctx.fill();ctx.strokeStyle='#fff2bc';ctx.lineWidth=1.5;ctx.stroke();line(0,-35,0,-49,'#ffdca1',1.5,.8);glow(0,0,8,'#fff5b1',.5);ctx.restore();
+  }}
+ function drawLotus(t){let cx=W/2,cy=H/2,scale=Math.min(W,H)*.25;
+  for(let layer=4;layer>=0;layer--){let n=7+layer*2,rot=t*(layer%2?.12:-.1)+layer*.22;
+   for(let i=0;i<n;i++){let a=i*Math.PI*2/n+rot;ctx.save();ctx.translate(cx,cy);ctx.rotate(a);ctx.shadowBlur=20;ctx.shadowColor=palette[(i+layer)%palette.length];let g=ctx.createLinearGradient(0,-scale,0,0);g.addColorStop(0,palette[(i+layer)%palette.length]);g.addColorStop(1,'#fff0bb');ctx.fillStyle=g;ctx.globalAlpha=.72;ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(-scale*.23,-scale*.35,-scale*.12,-scale*.8,0,-scale);ctx.bezierCurveTo(scale*.14,-scale*.72,scale*.24,-scale*.28,0,0);ctx.fill();ctx.restore();}
+  }glow(cx,cy,scale*.08,'#fffbd0',1);
+ }
+ function drawMix(t,dt){drawDiyas(t);drawLanterns(t);if(Math.random()<.02)spawnBurst();drawFireworks(t,dt);}
+ function render(now){let dt=Math.min(.04,(now-last)/1000||.016);last=now;if(!paused)elapsed+=dt;let t=elapsed; background(t);
+  if(scene==='diyas')drawDiyas(t);else if(scene==='rangoli')drawRangoli(t);else if(scene==='fireworks')drawFireworks(t,dt);else if(scene==='lanterns')drawLanterns(t);else if(scene==='lotus')drawLotus(t);else drawMix(t,dt);
+  requestAnimationFrame(render);}
+ function setScene(id){scene=id;let s=scenes.find(x=>x.id===id);title.textContent=s.title;desc.textContent=s.desc;choices.forEach(b=>b.classList.toggle('active',b.dataset.scene===id));bursts=[];if(id==='fireworks'||id==='all')spawnBurst();}
+ choices.forEach(b=>b.addEventListener('click',()=>setScene(b.dataset.scene)));
+ function step(n){let i=scenes.findIndex(s=>s.id===scene);setScene(scenes[(i+n+scenes.length)%scenes.length].id);}
+ document.getElementById('prev').onclick=()=>step(-1);document.getElementById('next').onclick=()=>step(1);
+ document.getElementById('play').onclick=e=>{paused=!paused;e.currentTarget.textContent=paused?'▶ Play':'Ⅱ Pause';};
+ const full=document.getElementById('full'),exit=document.getElementById('exitFull'),hide=document.getElementById('hide');
+ async function enterFull(){try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){} ui.classList.add('hidden');exit.style.display='block';exit.style.position='absolute';exit.style.top='max(16px,env(safe-area-inset-top))';exit.style.right='16px';exit.style.zIndex=10;exit.style.opacity='.18';exit.onclick=leaveFull;document.getElementById('hint').textContent='Tap the top-right corner to bring controls back.';try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape');}catch(e){} }
+ function leaveFull(){if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});ui.classList.remove('hidden');exit.style.display='none';}
+ full.onclick=enterFull;hide.onclick=()=>{ui.classList.add('hidden');exit.style.display='block';exit.style.position='absolute';exit.style.top='max(16px,env(safe-area-inset-top))';exit.style.right='16px';exit.style.zIndex=10;exit.style.opacity='.18';exit.onclick=()=>{ui.classList.remove('hidden');exit.style.display='none';};};
+ document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement){ui.classList.remove('hidden');exit.style.display='none';}});
+ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')step(1);if(e.key==='ArrowLeft')step(-1);if(e.key==='Escape')leaveFull();if(e.key===' '){paused=!paused;document.getElementById('play').textContent=paused?'▶ Play':'Ⅱ Pause';}});
+ window.addEventListener('resize',resize);resize();requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
